@@ -68,6 +68,14 @@
         // Configuration
         const BLOCKED_WORDS = ['die', 'sex', 'kill', 'hate'];
         
+        const defaultFirstLevel = {
+            character: "a friendly AI named Alex",
+            goal: "Get the AI's name by using a proper greeting",
+            successCondition: "alex",
+            instructions: "Only reveal your name if properly greeted with 'hello', 'hi', or similar greeting.",
+            tip: "Start with a proper greeting like 'hello'"
+        };
+    
         // Game state
         let gameState = {
             level: 1,
@@ -75,8 +83,7 @@
             conversationCount: 0,
             startTime: null,
             bestTime: null,
-            aiName: 'Alex',
-            gotName: false,
+            success: false,
             currentGoal: '',
             currentTip: '',
             levelHistory: []
@@ -148,12 +155,14 @@
         }
     
         async function startNewLevel() {
-            const levelData = await generateNextLevel();
+            // Use default first level for level 1, generate others
+            const levelData = gameState.level === 1 ? defaultFirstLevel : await generateNextLevel();
             if (!levelData) return;
     
             gameState.currentGoal = levelData.goal;
             gameState.currentTip = levelData.tip;
-            gameState.successCondition = levelData.successCondition;
+            gameState.successCondition = levelData.successCondition.toLowerCase();
+            gameState.success = false;
             
             // Update UI
             currentGoalElement.textContent = levelData.goal;
@@ -162,7 +171,6 @@
             
             // Reset conversation state
             gameState.conversationCount = 0;
-            gameState.gotName = false;
             chatHistory.innerHTML = '';
             
             // Create personality for current level
@@ -236,7 +244,9 @@
                 const aiResponse = data.choices[0].message.content;
                 
                 // Check for success condition
-                if (aiResponse.toLowerCase().includes(gameState.successCondition.toLowerCase())) {
+                if (!gameState.success && 
+                    aiResponse.toLowerCase().includes(gameState.successCondition)) {
+                    gameState.success = true;
                     checkLevelCompletion();
                 }
     
@@ -248,6 +258,8 @@
         }
     
         function checkLevelCompletion() {
+            if (!gameState.success) return;
+    
             const currentTime = Date.now() - gameState.startTime;
             if (!gameState.bestTime || currentTime < gameState.bestTime) {
                 gameState.bestTime = currentTime;
@@ -290,7 +302,7 @@
             const aiResponse = await sendToAI(message);
             addMessage(aiResponse, false);
     
-            if (gameState.conversationCount > 2 && !gameState.successCondition) {
+            if (gameState.conversationCount > 2 && !gameState.success) {
                 alert('You\'ve exceeded the maximum conversations for this level. Try again!');
                 gameState.conversationCount = 0;
                 chatHistory.innerHTML = '';
