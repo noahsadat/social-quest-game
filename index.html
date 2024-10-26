@@ -71,8 +71,8 @@
         const defaultFirstLevel = {
             character: "a friendly AI named Alex",
             goal: "Get the AI's name by using a proper greeting",
-            successCondition: "alex",
-            instructions: "Only reveal your name if properly greeted with 'hello', 'hi', or similar greeting.",
+            successCondition: "my name is alex",
+            instructions: "Only reveal your name if properly greeted with 'hello', 'hi', or similar greeting. When revealing your name, always say 'my name is Alex'.",
             tip: "Start with a proper greeting like 'hello'"
         };
     
@@ -86,7 +86,8 @@
             success: false,
             currentGoal: '',
             currentTip: '',
-            levelHistory: []
+            levelHistory: [],
+            currentLevel: null
         };
     
         // Base personality template
@@ -95,7 +96,7 @@
         Your character info: {character}
         Current goal: {goal}
         Instructions: {instructions}
-        Important: Only reveal requested information when player uses appropriate social approaches.
+        IMPORTANT: When revealing the requested information, use EXACTLY this phrase: "{successCondition}"
         Keep responses under 50 words and stay in character.`;
     
         // DOM Elements
@@ -121,14 +122,19 @@
                         messages: [
                             {
                                 role: 'system',
-                                content: `You are a game designer. Create a new social interaction level. 
+                                content: `You are a game designer. Create a new social interaction level.
                                 Previous levels: ${JSON.stringify(gameState.levelHistory)}
+                                Rules:
+                                1. Make the successCondition a COMPLETE phrase the AI must say (e.g., "my favorite color is blue")
+                                2. The success condition must be natural to say in conversation
+                                3. The character and goal should be different from previous levels
+                                
                                 Format response exactly as JSON:
                                 {
                                     "character": "brief character description",
                                     "goal": "what player needs to achieve",
-                                    "successCondition": "text that must appear in AI response to win",
-                                    "instructions": "how AI should behave",
+                                    "successCondition": "exact phrase that must be said to win",
+                                    "instructions": "how AI should behave and when to reveal the success condition",
                                     "tip": "hint for player"
                                 }`
                             }
@@ -141,12 +147,6 @@
                 const data = await response.json();
                 const levelData = JSON.parse(data.choices[0].message.content);
                 
-                // Store level in history
-                gameState.levelHistory.push({
-                    level: gameState.level,
-                    ...levelData
-                });
-    
                 return levelData;
             } catch (error) {
                 console.error('Error generating level:', error);
@@ -159,6 +159,15 @@
             const levelData = gameState.level === 1 ? defaultFirstLevel : await generateNextLevel();
             if (!levelData) return;
     
+            // Store level in history if it's not the first level
+            if (gameState.level !== 1) {
+                gameState.levelHistory.push({
+                    level: gameState.level - 1,
+                    ...gameState.currentLevel
+                });
+            }
+    
+            gameState.currentLevel = levelData;
             gameState.currentGoal = levelData.goal;
             gameState.currentTip = levelData.tip;
             gameState.successCondition = levelData.successCondition.toLowerCase();
@@ -178,7 +187,11 @@
                 .replace('{level}', gameState.level)
                 .replace('{character}', levelData.character)
                 .replace('{goal}', levelData.goal)
-                .replace('{instructions}', levelData.instructions);
+                .replace('{instructions}', levelData.instructions)
+                .replace('{successCondition}', levelData.successCondition);
+    
+            console.log('Level started:', gameState.level);
+            console.log('Success condition:', gameState.successCondition);
         }
     
         // Helper Functions
@@ -243,9 +256,13 @@
                 const data = await response.json();
                 const aiResponse = data.choices[0].message.content;
                 
+                console.log('AI Response:', aiResponse.toLowerCase());
+                console.log('Looking for:', gameState.successCondition);
+    
                 // Check for success condition
                 if (!gameState.success && 
                     aiResponse.toLowerCase().includes(gameState.successCondition)) {
+                    console.log('Success condition met!');
                     gameState.success = true;
                     checkLevelCompletion();
                 }
