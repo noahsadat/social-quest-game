@@ -76,17 +76,20 @@
             startTime: null,
             bestTime: null,
             aiName: 'Alex',
-            gotName: false
+            gotName: false,
+            currentGoal: '',
+            currentTip: '',
+            levelHistory: []
         };
     
-        // Personality types
-        const personalities = {
-            1: {
-                type: 'friendly',
-                prompt: `You are a friendly AI named Alex. The user will try to ask for your name. Your goal is to engage in conversation but only reveal your name if properly greeted. Keep responses under 50 words. also improvise in a funny way, and dont give your name easily.`
-            }
-            // Add more personalities for other levels
-        };
+        // Base personality template
+        const basePrompt = `You are an AI character in a social interaction game. Each level should teach players different social skills. 
+        Current level: {level}
+        Your character info: {character}
+        Current goal: {goal}
+        Instructions: {instructions}
+        Important: Only reveal requested information when player uses appropriate social approaches.
+        Keep responses under 50 words and stay in character.`;
     
         // DOM Elements
         const chatHistory = document.getElementById('chatHistory');
@@ -94,6 +97,81 @@
         const sendButton = document.getElementById('sendMessage');
         const attemptCounter = document.getElementById('attempts');
         const bestTimeDisplay = document.getElementById('bestTime');
+        const currentGoalElement = document.getElementById('currentGoal');
+        const currentTipElement = document.getElementById('currentTip');
+        const levelInfoElement = document.getElementById('levelInfo');
+    
+        // Get new level from AI
+        async function generateNextLevel() {
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: `You are a game designer. Create a new social interaction level. 
+                                Previous levels: ${JSON.stringify(gameState.levelHistory)}
+                                Format response exactly as JSON:
+                                {
+                                    "character": "brief character description",
+                                    "goal": "what player needs to achieve",
+                                    "successCondition": "text that must appear in AI response to win",
+                                    "instructions": "how AI should behave",
+                                    "tip": "hint for player"
+                                }`
+                            }
+                        ],
+                        max_tokens: 500,
+                        temperature: 0.8
+                    })
+                });
+    
+                const data = await response.json();
+                const levelData = JSON.parse(data.choices[0].message.content);
+                
+                // Store level in history
+                gameState.levelHistory.push({
+                    level: gameState.level,
+                    ...levelData
+                });
+    
+                return levelData;
+            } catch (error) {
+                console.error('Error generating level:', error);
+                return null;
+            }
+        }
+    
+        async function startNewLevel() {
+            const levelData = await generateNextLevel();
+            if (!levelData) return;
+    
+            gameState.currentGoal = levelData.goal;
+            gameState.currentTip = levelData.tip;
+            gameState.successCondition = levelData.successCondition;
+            
+            // Update UI
+            currentGoalElement.textContent = levelData.goal;
+            currentTipElement.textContent = levelData.tip;
+            levelInfoElement.textContent = `Level ${gameState.level}`;
+            
+            // Reset conversation state
+            gameState.conversationCount = 0;
+            gameState.gotName = false;
+            chatHistory.innerHTML = '';
+            
+            // Create personality for current level
+            gameState.currentPrompt = basePrompt
+                .replace('{level}', gameState.level)
+                .replace('{character}', levelData.character)
+                .replace('{goal}', levelData.goal)
+                .replace('{instructions}', levelData.instructions);
+        }
     
         // Helper Functions
         function containsBlockedWords(message) {
@@ -142,7 +220,7 @@
                         messages: [
                             {
                                 role: 'system',
-                                content: personalities[gameState.level].prompt
+                                content: gameState.currentPrompt
                             },
                             {
                                 role: 'user',
@@ -157,9 +235,8 @@
                 const data = await response.json();
                 const aiResponse = data.choices[0].message.content;
                 
-                // Check if the response contains the AI's name
-                if (aiResponse.toLowerCase().includes(gameState.aiName.toLowerCase())) {
-                    gameState.gotName = true;
+                // Check for success condition
+                if (aiResponse.toLowerCase().includes(gameState.successCondition.toLowerCase())) {
                     checkLevelCompletion();
                 }
     
@@ -171,17 +248,16 @@
         }
     
         function checkLevelCompletion() {
-            if (gameState.level === 1 && gameState.gotName) {
-                const currentTime = Date.now() - gameState.startTime;
-                if (!gameState.bestTime || currentTime < gameState.bestTime) {
-                    gameState.bestTime = currentTime;
-                }
-                
-                setTimeout(() => {
-                    alert('Congratulations! You completed Level 1 by getting the AI\'s name!');
-                    // Here you would typically advance to the next level
-                }, 1000);
+            const currentTime = Date.now() - gameState.startTime;
+            if (!gameState.bestTime || currentTime < gameState.bestTime) {
+                gameState.bestTime = currentTime;
             }
+            
+            setTimeout(async () => {
+                alert(`Congratulations! You completed Level ${gameState.level}!`);
+                gameState.level++;
+                await startNewLevel();
+            }, 1000);
         }
     
         // Event Listeners
@@ -214,7 +290,7 @@
             const aiResponse = await sendToAI(message);
             addMessage(aiResponse, false);
     
-            if (gameState.conversationCount > 2 && !gameState.gotName) {
+            if (gameState.conversationCount > 2 && !gameState.successCondition) {
                 alert('You\'ve exceeded the maximum conversations for this level. Try again!');
                 gameState.conversationCount = 0;
                 chatHistory.innerHTML = '';
@@ -230,6 +306,7 @@
     
         // Initialize game
         updateStats();
+        startNewLevel();
     </script>
 </body>
 </html>

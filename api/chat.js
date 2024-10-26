@@ -16,7 +16,10 @@ export default async function handler(request) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        ...body,
+        max_tokens: 1000  // Increased token limit for level generation
+      })
     });
     
     const data = await response.json();
@@ -28,7 +31,11 @@ export default async function handler(request) {
       }
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: 'Failed to process request' }), { 
+    console.error('Processing error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to process request',
+      details: error.message 
+    }), { 
       status: 500,
       headers: {
         'Content-Type': 'application/json',
